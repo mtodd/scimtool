@@ -53,8 +53,12 @@ func main() {
 		}
 	}(updates)
 
+	compare := func(prev ldapwatch.Result, next ldapwatch.Result) bool {
+		return true
+	}
+
 	// err = watcher.Add("uid=defunkt,ou=users,dc=github,dc=com")
-	err = watcher.Add(searchRequest, updates)
+	err = watcher.Add(searchRequest, compare, updates)
 	if err != nil {
 		log.Fatal(err)
 	}
