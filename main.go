@@ -26,17 +26,44 @@ var (
 
 func main() {
 	watcher, err := ldapwatch.NewWatcher()
-
-	watcher.Connect(host, port)
-	defer watcher.Stop()
-
-	watcher.Bind(bindusername, bindpassword)
-
-	err = watcher.Add("uid=defunkt,ou=users,dc=github,dc=com")
 	if err != nil {
 		log.Fatal(err)
 	}
 
+	conn, err := ldap.Dial("tcp", fmt.Sprintf("%s:%d", host, port))
+	if err != nil {
+		log.Fatal(err)
+	}
+	conn.Bind(bindusername, bindpassword)
+
+	watcher.Connect(host, port)
+	watcher.Bind(bindusername, bindpassword)
+
+	// Search for the given username
+	searchRequest := ldap.NewSearchRequest(
+		base,
+		ldap.ScopeWholeSubtree, ldap.NeverDerefAliases, 0, 0, false,
+		// fmt.Sprintf("(&(objectClass=organizationalPerson)&(uid=%s))", username),
+		fmt.Sprintf("(uid=%s)", username),
+		[]string{"dn"},
+		nil,
+	)
+
+	updates := make(chan ldapwatch.Result)
+	cb := func(c chan ldapwatch.Result) {
+		for result := range c {
+			log.Println(fmt.Sprintf("updated %#v", result))
+		}
+	}
+	go cb(updates)
+
+	// err = watcher.Add("uid=defunkt,ou=users,dc=github,dc=com")
+	err = watcher.Add(searchRequest, updates)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	defer watcher.Stop()
 	watcher.Start()
 }
 
