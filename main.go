@@ -47,12 +47,11 @@ func main() {
 	)
 
 	updates := make(chan ldapwatch.Result)
-	cb := func(c chan ldapwatch.Result) {
+	go func(c chan ldapwatch.Result) {
 		for result := range c {
 			log.Println(fmt.Sprintf("updated %#v", result))
 		}
-	}
-	go cb(updates)
+	}(updates)
 
 	// err = watcher.Add("uid=defunkt,ou=users,dc=github,dc=com")
 	err = watcher.Add(searchRequest, updates)
