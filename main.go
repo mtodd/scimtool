@@ -54,7 +54,19 @@ func main() {
 	}(updates)
 
 	compare := func(prev ldapwatch.Result, next ldapwatch.Result) bool {
-		return true
+		// no previous results (initial search)
+		if (ldapwatch.Result{}) == prev {
+			log.Println("prev is nil")
+			return true
+		}
+
+		// check length differences
+		if len(prev.Results.Entries) != len(next.Results.Entries) {
+			log.Println("entry count does not match")
+			return true
+		}
+
+		return false
 	}
 
 	// err = watcher.Add("uid=defunkt,ou=users,dc=github,dc=com")
