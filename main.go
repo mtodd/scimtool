@@ -25,19 +25,16 @@ var (
 )
 
 func main() {
-	watcher, err := ldapwatch.NewWatcher()
-	if err != nil {
-		log.Fatal(err)
-	}
-
 	conn, err := ldap.Dial("tcp", fmt.Sprintf("%s:%d", host, port))
 	if err != nil {
 		log.Fatal(err)
 	}
 	conn.Bind(bindusername, bindpassword)
 
-	watcher.Connect(host, port)
-	watcher.Bind(bindusername, bindpassword)
+	watcher, err := ldapwatch.NewWatcher(conn)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	// Search for the given username
 	searchRequest := ldap.NewSearchRequest(
