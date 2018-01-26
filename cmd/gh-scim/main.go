@@ -11,15 +11,21 @@ import (
 	"os"
 )
 
-// gh-scim <command> -o <org> [guid]
-//
-// <org> is the organization name, e.g. `acme`, and is required for all commands.
-//
-// commands
-// * list
-// * remove [guid]
-//   [guid] is required
-// * add ...
+const usage = `
+gh-scim <command> -o <org> [guid]
+
+commands:
+* list [filter]
+  [filter] is a SCIM filter
+  example: 'userName eq "evilmtodd"'
+* remove [guid]
+  [guid] is required
+* add...
+
+flags:
+* -o <org>: the organization name, e.g. "acme"; required for all commands
+* -d: debug logging
+`
 
 const defaultAPIURL = "https://api.github.com"
 
@@ -273,14 +279,12 @@ func main() {
 	}
 
 	cmds := os.Args[1:]
-	// log.Printf("%v", cmds)
 	if len(cmds) < 1 {
-		log.Fatal("command required")
+		log.Fatalf("error: command required\n\n%s", usage)
 	}
 
 	switch cmds[0] {
 	case "list":
-		// TODO: support filter
 		var filter string
 		if len(cmds) > 1 {
 			filter = cmds[1]
@@ -297,10 +301,10 @@ func main() {
 	case "add":
 		err = addHandler(client)
 	default:
-		log.Fatal("commands are: list, remove, add")
+		err = fmt.Errorf("unknown command")
 	}
 
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("error: %s\n\n%s", err, usage)
 	}
 }
