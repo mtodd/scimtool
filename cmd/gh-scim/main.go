@@ -13,7 +13,7 @@ import (
 )
 
 const usage = `
-gh-scim <command> -o <org> [guid]
+gh-scim <command> -o <org> [guid|filter]
 
 commands:
 * list [filter]
@@ -44,7 +44,6 @@ type apiClient struct {
 
 func (c *apiClient) buildRequest(method, endpoint string) (*http.Request, error) {
 	req, err := http.NewRequest(method, c.buildEndpointURL(endpoint), nil)
-	// http.NewRequest
 
 	req.Header.Set("Accept", "application/vnd.github.cloud-9-preview+json+scim")
 	req.Header.Set("Authorization", "Bearer "+c.token)
@@ -61,28 +60,24 @@ func (c *apiClient) buildEndpointURL(path string) string {
 }
 
 func (c *apiClient) do(req *http.Request) (*http.Response, error) {
-	// log.Print(req)
-	return c.client.Do(req)
+	if c.debug {
+		log.Printf("debug: %v", req)
+	}
+
+	res, err := c.client.Do(req)
+
+	if c.debug && err == nil {
+		log.Printf("debug: %v", res)
+	}
+
+	return res, err
 }
 
-// {"schemas":["urn:ietf:params:scim:api:messages:2.0:ListResponse"],"totalResults":0,"itemsPerPage":0,"startIndex":1,"Resources":[]}
 // { "schemas":["urn:ietf:params:scim:api:messages:2.0:ListResponse"],
 //   "totalResults":2,
 //   "itemsPerPage":2,
 //   "startIndex":1,
-//   "Resources":[
-//     {
-//       "schemas":["urn:ietf:params:scim:schemas:core:2.0:User"],
-//       "id":"e7818cf4-0206-11e8-8526-afbcdd6f73fd",
-//       "externalId":"evilmtodd",
-//       "userName":"evilmtodd",
-//       "name":{"givenName":"Mtodd","familyName":"Evil"},
-//       "emails":[{"value":"chiology+evilmtodd@gmail.com","type":"work","primary":true}],
-//       "active":true,
-//       "meta":{
-// "resourceType":"User","created":"2018-01-25T14:35:31-05:00","lastModified":"2018-01-25T14:35:31-05:00","location":"https://api.github.com/scim/v2/organizations/GH4B/Users/e7818cf4-0206-11e8-8526-afbcdd6f73fd"}},
-//     {"schemas":["urn:ietf:params:scim:schemas:core:2.0:User"],"id":"d9ff5ddc-0200-11e8-88b5-b07393a906c1","externalId":"00udrnla8jKyYID8F0h7","userName":"mtodd@github.com","name":{"givenName":"Matt","familyName":"Todd"},"emails":[{"value":"mtodd@github.com","primary":true,"type":"work"}],"active":true,"meta":{"resourceType":"User","created":"2018-01-25T13:52:11-05:00","lastModified":"2018-01-25T13:52:25-05:00","location":"https://api.github.com/scim/v2/organizations/GH4B/Users/d9ff5ddc-0200-11e8-88b5-b07393a906c1"}}
-//   ]
+//   "Resources":[...]
 // }
 type scimListResponse struct {
 	Schemas      []string `json:"schemas"`
@@ -100,7 +95,12 @@ type scimListResponse struct {
 //   "name":{"givenName":"Mtodd","familyName":"Evil"},
 //   "emails":[{"value":"chiology+evilmtodd@gmail.com","type":"work","primary":true}],
 //   "active":true,
-//   "meta":{"resourceType":"User","created":"2018-01-25T14:35:31-05:00","lastModified":"2018-01-25T14:35:31-05:00","location":"https://api.github.com/scim/v2/organizations/GH4B/Users/e7818cf4-0206-11e8-8526-afbcdd6f73fd"}
+//   "meta":{
+//     "resourceType":"User",
+//     "created":"2018-01-25T14:35:31-05:00",
+//     "lastModified":"2018-01-25T14:35:31-05:00",
+//     "location":"https://api.github.com/scim/v2/organizations/GH4B/Users/e7818cf4-0206-11e8-8526-afbcdd6f73fd"
+//   }
 // }
 type scimResource struct {
 	Schemas    []string      `json:"schemas"`
@@ -130,8 +130,6 @@ func (c *apiClient) listHandler(filter string) error {
 		return err
 	}
 
-	// log.Println(res)
-
 	body, err := ioutil.ReadAll(res.Body)
 	if err != nil {
 		return err
@@ -146,28 +144,21 @@ func (c *apiClient) listHandler(filter string) error {
 		return fmt.Errorf("list: not found: %s", string(body))
 	}
 
-	// log.Printf("%v", body)
-	// log.Println(string(body))
+	if c.debug {
+		log.Printf("debug: %v", string(body))
+	}
 
 	var list scimListResponse
 	if err := json.Unmarshal(body, &list); err != nil {
 		return err
 	}
 
-	// log.Printf("%v", list)
-
-	// var f interface{}
-	// if err := json.Unmarshal(body, &f); err != nil {
-	// 	return err
-	// }
-	// log.Printf("%v", f)
-
 	for _, user := range list.Resources {
 		json, err := json.Marshal(user)
 		if err != nil {
 			return err
 		}
-		// log.Printf("%s", json)
+
 		fmt.Println(string(json))
 	}
 
@@ -185,8 +176,6 @@ func (c *apiClient) removeHandler(guid string) error {
 	if err != nil {
 		return err
 	}
-
-	// log.Println(res) // debugging
 
 	if res.StatusCode != http.StatusNoContent {
 		return fmt.Errorf("remove failed: %v", res)
@@ -237,14 +226,10 @@ func (c *apiClient) addHandler() error {
 
 	req.Body = ioutil.NopCloser(bytes.NewBufferString(addScimUserTmpl))
 
-	// log.Printf("%v", req)
-
 	res, err := c.do(req)
 	if err != nil {
 		return err
 	}
-
-	// log.Printf("%v", res)
 
 	body, err := ioutil.ReadAll(res.Body)
 	if err != nil {
@@ -256,8 +241,9 @@ func (c *apiClient) addHandler() error {
 		return fmt.Errorf("remove failed: %v", res)
 	}
 
-	// log.Printf("%v", body)
-	// log.Println(string(body))
+	if c.debug {
+		log.Printf("debug: %v", string(body))
+	}
 
 	var user scimUser
 	if err := json.Unmarshal(body, &user); err != nil {
