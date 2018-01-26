@@ -154,7 +154,7 @@ func (c *apiClient) addHandler() error {
 		return err
 	}
 
-	auser := scim.User{
+	requser := scim.User{
 		Schemas:    []string{scim.UserSchema},
 		ExternalID: "evilmtodd",
 		UserName:   "evilmtodd",
@@ -169,7 +169,7 @@ func (c *apiClient) addHandler() error {
 		}},
 		Active: true,
 	}
-	reqbody, err := json.Marshal(auser)
+	reqbody, err := json.Marshal(requser)
 	if err != nil {
 		return err
 	}
