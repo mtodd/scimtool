@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -34,6 +35,7 @@ type apiClient struct {
 	baseURL string
 	token   string
 	org     string
+	debug   bool
 }
 
 func (c *apiClient) buildRequest(method, endpoint string) (*http.Request, error) {
@@ -268,35 +270,46 @@ func main() {
 
 	// configuration
 	token := os.Getenv("TOKEN")
-	org := os.Getenv("ORG")
+
+	org := flag.String("o", "", "")
+	debug := flag.Bool("d", false, "")
+	flag.Parse()
+
+	if *org == "" {
+		log.Fatalf("error: -o organization flag is required\n\n%s", usage)
+	}
+
+	if token == "" {
+		log.Fatalf("error: TOKEN environment variable is required\n\n%s", usage)
+	}
+
+	if len(flag.Args()) < 1 {
+		log.Fatalf("error: command required\n\n%s", usage)
+	}
 
 	// HTTP client
 	client := &apiClient{
 		client:  &http.Client{},
 		baseURL: defaultAPIURL,
 		token:   token,
-		org:     org,
+		org:     *org,
+		debug:   *debug,
 	}
 
-	cmds := os.Args[1:]
-	if len(cmds) < 1 {
-		log.Fatalf("error: command required\n\n%s", usage)
-	}
-
-	switch cmds[0] {
+	switch flag.Arg(0) {
 	case "list":
 		var filter string
-		if len(cmds) > 1 {
-			filter = cmds[1]
+		if flag.Arg(1) != "" {
+			filter = flag.Arg(1)
 		}
 
 		err = listHandler(client, filter)
 	case "remove":
-		if len(cmds) < 2 {
-			log.Fatal("guid is required")
+		if flag.Arg(1) == "" {
+			log.Fatalf("error: guid is required\n\n%s", usage)
 		}
 
-		guid := cmds[1]
+		guid := flag.Arg(1)
 		err = removeHandler(client, guid)
 	case "add":
 		err = addHandler(client)
