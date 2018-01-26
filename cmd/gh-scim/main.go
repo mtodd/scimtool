@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+
+	scim "github.com/mtodd/scimtool"
 )
 
 const usage = `
@@ -73,54 +75,6 @@ func (c *apiClient) do(req *http.Request) (*http.Response, error) {
 	return res, err
 }
 
-// { "schemas":["urn:ietf:params:scim:api:messages:2.0:ListResponse"],
-//   "totalResults":2,
-//   "itemsPerPage":2,
-//   "startIndex":1,
-//   "Resources":[...]
-// }
-type scimListResponse struct {
-	Schemas      []string `json:"schemas"`
-	TotalResults int      `json:"totalResults"`
-	ItemsPerPage int      `json:"itemsPerPage"`
-	StartIndex   int      `json:"startIndex"`
-	Resources    []scimUser
-}
-
-// {
-//   "schemas":["urn:ietf:params:scim:schemas:core:2.0:User"],
-//   "id":"e7818cf4-0206-11e8-8526-afbcdd6f73fd",
-//   "externalId":"evilmtodd",
-//   "userName":"evilmtodd",
-//   "name":{"givenName":"Mtodd","familyName":"Evil"},
-//   "emails":[{"value":"chiology+evilmtodd@gmail.com","type":"work","primary":true}],
-//   "active":true,
-//   "meta":{...}
-// }
-type scimUser struct {
-	Schemas    []string      `json:"schemas"`
-	ID         string        `json:"id"`
-	ExternalID string        `json:"externalId"`
-	UserName   string        `json:"userName"`
-	Name       interface{}   `json:"name"`
-	Emails     []interface{} `json:"emails"`
-	Active     bool          `json:"active"`
-	Metadata   scimMetadata  `json:"meta"`
-}
-
-// {
-//   "resourceType":"User",
-//   "created":"2018-01-25T14:35:31-05:00",
-//   "lastModified":"2018-01-25T14:35:31-05:00",
-//   "location":"https://api.github.com/scim/v2/organizations/GH4B/Users/e7818cf4-0206-11e8-8526-afbcdd6f73fd"
-// }
-type scimMetadata struct {
-	ResourceType string `json:"resourceType"`
-	Created      string `json:"created"`
-	LastModified string `json:"lastModified"`
-	Location     string `json:"location"`
-}
-
 // GET https://api.github.com/scim/v2/organizations/:organization/Users
 func (c *apiClient) listHandler(filter string) error {
 	req, err := c.buildRequest("GET", fmt.Sprintf("/scim/v2/organizations/%s/Users", c.org))
@@ -157,7 +111,7 @@ func (c *apiClient) listHandler(filter string) error {
 		log.Printf("debug: %v", string(body))
 	}
 
-	var list scimListResponse
+	var list scim.ListResponse
 	if err := json.Unmarshal(body, &list); err != nil {
 		return err
 	}
@@ -240,7 +194,7 @@ func (c *apiClient) addHandler() error {
 		log.Printf("debug: %v", string(body))
 	}
 
-	var user scimUser
+	var user scim.User
 	if err := json.Unmarshal(body, &user); err != nil {
 		return err
 	}
