@@ -148,32 +148,33 @@ func (c *apiClient) removeHandler(guid string) error {
 	return nil
 }
 
-const addScimUserTmpl = `
-{
-  "schemas":["urn:ietf:params:scim:schemas:core:2.0:User"],
-  "externalId":"evilmtodd",
-  "userName":"evilmtodd",
-  "name":{
-    "familyName":"Evil",
-    "givenName":"Mtodd"
-  },
-  "emails":[
-    {
-      "value":"chiology+evilmtodd@gmail.com",
-      "type":"work",
-      "primary":true
-    }
-  ]
-}
-`
-
 func (c *apiClient) addHandler() error {
 	req, err := c.buildRequest("POST", fmt.Sprintf("/scim/v2/organizations/%s/Users", c.org))
 	if err != nil {
 		return err
 	}
 
-	req.Body = ioutil.NopCloser(bytes.NewBufferString(addScimUserTmpl))
+	auser := scim.User{
+		Schemas:    []string{scim.UserSchema},
+		ExternalID: "evilmtodd",
+		UserName:   "evilmtodd",
+		Name: scim.Name{
+			GivenName:  "Evil",
+			FamilyName: "Mtodd",
+		},
+		Emails: []scim.Email{{
+			Type:    "work",
+			Value:   "chiology+evilmtodd@gmail.com",
+			Primary: true,
+		}},
+		Active: true,
+	}
+	reqbody, err := json.Marshal(auser)
+	if err != nil {
+		return err
+	}
+
+	req.Body = ioutil.NopCloser(bytes.NewBufferString(string(reqbody)))
 
 	res, err := c.do(req)
 	if err != nil {

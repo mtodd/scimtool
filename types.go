@@ -17,6 +17,9 @@ type ListResponse struct {
 	Resources    []User
 }
 
+// UserSchema is the schema reference for the User type.
+const UserSchema = "urn:ietf:params:scim:schemas:core:2.0:User"
+
 // User maps to the "User" (urn:ietf:params:scim:schemas:core:2.0:User) SCIM type.
 //
 // {
@@ -37,7 +40,7 @@ type User struct {
 	Name       Name     `json:"name"`
 	Emails     []Email  `json:"emails"`
 	Active     bool     `json:"active"`
-	Metadata   Metadata `json:"meta"`
+	Metadata   Metadata `json:"meta,omitempty"`
 }
 
 // Email maps to the "emails" array of objects.
