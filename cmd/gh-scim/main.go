@@ -109,8 +109,8 @@ type scimResource struct {
 }
 
 // GET https://api.github.com/scim/v2/organizations/:organization/Users
-func listHandler(client *apiClient, filter string) error {
-	req, err := client.buildRequest("GET", fmt.Sprintf("/scim/v2/organizations/%s/Users", client.org))
+func (c *apiClient) listHandler(filter string) error {
+	req, err := c.buildRequest("GET", fmt.Sprintf("/scim/v2/organizations/%s/Users", c.org))
 	if err != nil {
 		return err
 	}
@@ -121,7 +121,7 @@ func listHandler(client *apiClient, filter string) error {
 		req.URL.RawQuery = q.Encode()
 	}
 
-	res, err := client.do(req)
+	res, err := c.do(req)
 	if err != nil {
 		return err
 	}
@@ -171,13 +171,13 @@ func listHandler(client *apiClient, filter string) error {
 }
 
 // DELETE /scim/v2/organizations/:organization/Users/:id
-func removeHandler(client *apiClient, guid string) error {
-	req, err := client.buildRequest("DELETE", fmt.Sprintf("/scim/v2/organizations/%s/Users/%s", client.org, guid))
+func (c *apiClient) removeHandler(guid string) error {
+	req, err := c.buildRequest("DELETE", fmt.Sprintf("/scim/v2/organizations/%s/Users/%s", c.org, guid))
 	if err != nil {
 		return err
 	}
 
-	res, err := client.do(req)
+	res, err := c.do(req)
 	if err != nil {
 		return err
 	}
@@ -225,8 +225,8 @@ type scimUser struct {
 	scimResource
 }
 
-func addHandler(client *apiClient) error {
-	req, err := client.buildRequest("POST", fmt.Sprintf("/scim/v2/organizations/%s/Users", client.org))
+func (c *apiClient) addHandler() error {
+	req, err := c.buildRequest("POST", fmt.Sprintf("/scim/v2/organizations/%s/Users", c.org))
 	if err != nil {
 		return err
 	}
@@ -235,7 +235,7 @@ func addHandler(client *apiClient) error {
 
 	// log.Printf("%v", req)
 
-	res, err := client.do(req)
+	res, err := c.do(req)
 	if err != nil {
 		return err
 	}
@@ -303,21 +303,21 @@ func main() {
 			filter = flag.Arg(1)
 		}
 
-		err = listHandler(client, filter)
+		err = client.listHandler(filter)
 	case "remove":
 		if flag.Arg(1) == "" {
 			log.Fatalf("error: guid is required\n\n%s", usage)
 		}
 
 		guid := flag.Arg(1)
-		err = removeHandler(client, guid)
+		err = client.removeHandler(guid)
 	case "add":
-		err = addHandler(client)
+		err = client.addHandler()
 	default:
-		err = fmt.Errorf("unknown command")
+		log.Fatalf("error: unknown command\n\n%s", usage)
 	}
 
 	if err != nil {
-		log.Fatalf("error: %s\n\n%s", err, usage)
+		log.Fatalf("error: %s", err)
 	}
 }
