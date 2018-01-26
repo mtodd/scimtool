@@ -23,12 +23,16 @@ commands:
   [guid] is required
 * add...
 
+environment variables:
+* TOKEN: used to authenticate requests; required
+* BASEURL: the API base URL; defaults to "https://api.github.com/"
+
 flags:
 * -o <org>: the organization name, e.g. "acme"; required for all commands
 * -d: debug logging
 `
 
-const defaultAPIURL = "https://api.github.com"
+const defaultBaseURL = "https://api.github.com"
 
 type apiClient struct {
 	client  *http.Client
@@ -271,6 +275,11 @@ func main() {
 	// configuration
 	token := os.Getenv("TOKEN")
 
+	baseURL := os.Getenv("BASEURL")
+	if baseURL == "" {
+		baseURL = defaultBaseURL
+	}
+
 	org := flag.String("o", "", "")
 	debug := flag.Bool("d", false, "")
 	flag.Parse()
@@ -290,7 +299,7 @@ func main() {
 	// HTTP client
 	client := &apiClient{
 		client:  &http.Client{},
-		baseURL: defaultAPIURL,
+		baseURL: baseURL,
 		token:   token,
 		org:     *org,
 		debug:   *debug,
