@@ -25,22 +25,46 @@ type ListResponse struct {
 //   "externalId":"evilmtodd",
 //   "userName":"evilmtodd",
 //   "name":{"givenName":"Mtodd","familyName":"Evil"},
-//   "emails":[{"value":"chiology+evilmtodd@gmail.com","type":"work","primary":true}],
+//   "emails":[...],
 //   "active":true,
 //   "meta":{...}
 // }
 type User struct {
-	Schemas    []string      `json:"schemas"`
-	ID         string        `json:"id"`
-	ExternalID string        `json:"externalId"`
-	UserName   string        `json:"userName"`
-	Name       interface{}   `json:"name"`
-	Emails     []interface{} `json:"emails"`
-	Active     bool          `json:"active"`
-	Metadata   Metadata      `json:"meta"`
+	Schemas    []string `json:"schemas"`
+	ID         string   `json:"id,omitempty"`
+	ExternalID string   `json:"externalId"`
+	UserName   string   `json:"userName"`
+	Name       Name     `json:"name"`
+	Emails     []Email  `json:"emails"`
+	Active     bool     `json:"active"`
+	Metadata   Metadata `json:"meta"`
 }
 
-// Metadata maps to "meta" data.
+// Email maps to the "emails" array of objects.
+//
+// {
+//   "value":"user@example.com",
+//   "type":"work",
+//   "primary":true
+// }
+type Email struct {
+	Value   string `json:"value"`
+	Type    string `json:"type"`
+	Primary bool   `json:"primary,omitempty"`
+}
+
+// Name maps to the "name" object.
+//
+// {
+//   "givenName":"Nora",
+//   "familyName":"Example"
+// }
+type Name struct {
+	GivenName  string `json:"givenName"`
+	FamilyName string `json:"familyName"`
+}
+
+// Metadata maps to "meta" object.
 //
 // {
 //   "resourceType":"User",
