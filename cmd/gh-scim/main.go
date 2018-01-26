@@ -84,7 +84,7 @@ type scimListResponse struct {
 	TotalResults int      `json:"totalResults"`
 	ItemsPerPage int      `json:"itemsPerPage"`
 	StartIndex   int      `json:"startIndex"`
-	Resources    []scimResource
+	Resources    []scimUser
 }
 
 // {
@@ -95,14 +95,9 @@ type scimListResponse struct {
 //   "name":{"givenName":"Mtodd","familyName":"Evil"},
 //   "emails":[{"value":"chiology+evilmtodd@gmail.com","type":"work","primary":true}],
 //   "active":true,
-//   "meta":{
-//     "resourceType":"User",
-//     "created":"2018-01-25T14:35:31-05:00",
-//     "lastModified":"2018-01-25T14:35:31-05:00",
-//     "location":"https://api.github.com/scim/v2/organizations/GH4B/Users/e7818cf4-0206-11e8-8526-afbcdd6f73fd"
-//   }
+//   "meta":{...}
 // }
-type scimResource struct {
+type scimUser struct {
 	Schemas    []string      `json:"schemas"`
 	ID         string        `json:"id"`
 	ExternalID string        `json:"externalId"`
@@ -110,6 +105,20 @@ type scimResource struct {
 	Name       interface{}   `json:"name"`
 	Emails     []interface{} `json:"emails"`
 	Active     bool          `json:"active"`
+	Metadata   scimMetadata  `json:"meta"`
+}
+
+// {
+//   "resourceType":"User",
+//   "created":"2018-01-25T14:35:31-05:00",
+//   "lastModified":"2018-01-25T14:35:31-05:00",
+//   "location":"https://api.github.com/scim/v2/organizations/GH4B/Users/e7818cf4-0206-11e8-8526-afbcdd6f73fd"
+// }
+type scimMetadata struct {
+	ResourceType string `json:"resourceType"`
+	Created      string `json:"created"`
+	LastModified string `json:"lastModified"`
+	Location     string `json:"location"`
 }
 
 // GET https://api.github.com/scim/v2/organizations/:organization/Users
@@ -203,20 +212,6 @@ const addScimUserTmpl = `
   ]
 }
 `
-
-// {
-//   "schemas":["urn:ietf:params:scim:schemas:core:2.0:User"],
-//   "id":"e7818cf4-0206-11e8-8526-afbcdd6f73fd",
-//   "externalId":"evilmtodd",
-//   "userName":"evilmtodd",
-//   "name":{"givenName":"Mtodd","familyName":"Evil"},
-//   "emails":[{"value":"chiology+evilmtodd@gmail.com","type":"work","primary":true}],
-//   "active":true,
-//   "meta":{"resourceType":"User","created":"2018-01-25T14:35:31-05:00","lastModified":"2018-01-25T14:35:31-05:00","location":"https://api.github.com/scim/v2/organizations/GH4B/Users/e7818cf4-0206-11e8-8526-afbcdd6f73fd"}
-// }
-type scimUser struct {
-	scimResource
-}
 
 func (c *apiClient) addHandler() error {
 	req, err := c.buildRequest("POST", fmt.Sprintf("/scim/v2/organizations/%s/Users", c.org))
