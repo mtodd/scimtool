@@ -10,6 +10,12 @@ Provides a simple SCIM client for GitHub Business organizations with SAML SSO co
 gh-scim -o $org list
 ```
 
+Filter by an attribute:
+
+``` shell
+gh-scim -o $org list 'userName eq "alice"'
+```
+
 ### Provision a SCIM identity
 
 ``` shell

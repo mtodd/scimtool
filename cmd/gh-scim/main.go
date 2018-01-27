@@ -8,7 +8,6 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
-	"net/url"
 	"os"
 
 	scim "github.com/mtodd/scimtool"
@@ -20,7 +19,7 @@ gh-scim <command> -o <org> [guid|filter]
 commands:
 * list [filter]
   [filter] is a SCIM filter
-  example: 'userName eq "evilmtodd"'
+  example: 'userName eq "alice"'
 * remove [guid]
   [guid] is required
 * add...
@@ -84,7 +83,7 @@ func (c *apiClient) listHandler(filter string) error {
 
 	if len(filter) > 0 {
 		q := req.URL.Query()
-		q.Add("filter", url.QueryEscape(filter))
+		q.Add("filter", filter)
 		req.URL.RawQuery = q.Encode()
 	}
 

@@ -25,9 +25,9 @@ const UserSchema = "urn:ietf:params:scim:schemas:core:2.0:User"
 // {
 //   "schemas":["urn:ietf:params:scim:schemas:core:2.0:User"],
 //   "id":"e7818cf4-0206-11e8-8526-afbcdd6f73fd",
-//   "externalId":"evilmtodd",
-//   "userName":"evilmtodd",
-//   "name":{"givenName":"Mtodd","familyName":"Evil"},
+//   "externalId":"alice",
+//   "userName":"alice",
+//   "name":{"givenName":"Alice","familyName":"Example"},
 //   "emails":[...],
 //   "active":true,
 //   "meta":{...}
@@ -46,7 +46,7 @@ type User struct {
 // Email maps to the "emails" array of objects.
 //
 // {
-//   "value":"user@example.com",
+//   "value":"alice@example.com",
 //   "type":"work",
 //   "primary":true
 // }
@@ -59,7 +59,7 @@ type Email struct {
 // Name maps to the "name" object.
 //
 // {
-//   "givenName":"Nora",
+//   "givenName":"Alice",
 //   "familyName":"Example"
 // }
 type Name struct {
