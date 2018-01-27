@@ -148,33 +148,18 @@ func (c *apiClient) removeHandler(guid string) error {
 	return nil
 }
 
-func (c *apiClient) addHandler() error {
+func (c *apiClient) addHandler(user scim.User) error {
 	req, err := c.buildRequest("POST", fmt.Sprintf("/scim/v2/organizations/%s/Users", c.org))
 	if err != nil {
 		return err
 	}
 
-	requser := scim.User{
-		Schemas:    []string{scim.UserSchema},
-		ExternalID: "evilmtodd",
-		UserName:   "evilmtodd",
-		Name: scim.Name{
-			GivenName:  "Evil",
-			FamilyName: "Mtodd",
-		},
-		Emails: []scim.Email{{
-			Type:    "work",
-			Value:   "chiology+evilmtodd@gmail.com",
-			Primary: true,
-		}},
-		Active: true,
-	}
-	reqbody, err := json.Marshal(requser)
+	jsonBody, err := json.Marshal(user)
 	if err != nil {
 		return err
 	}
 
-	req.Body = ioutil.NopCloser(bytes.NewBufferString(string(reqbody)))
+	req.Body = ioutil.NopCloser(bytes.NewBufferString(string(jsonBody)))
 
 	res, err := c.do(req)
 	if err != nil {
@@ -195,7 +180,6 @@ func (c *apiClient) addHandler() error {
 		log.Printf("debug: %v", string(body))
 	}
 
-	var user scim.User
 	if err := json.Unmarshal(body, &user); err != nil {
 		return err
 	}
@@ -257,7 +241,22 @@ func main() {
 		guid := flag.Arg(1)
 		err = client.removeHandler(guid)
 	case "add":
-		err = client.addHandler()
+		user := scim.User{
+			Schemas:    []string{scim.UserSchema},
+			ExternalID: "evilmtodd",
+			UserName:   "evilmtodd",
+			Name: scim.Name{
+				GivenName:  "Evil",
+				FamilyName: "Mtodd",
+			},
+			Emails: []scim.Email{{
+				Type:    "work",
+				Value:   "chiology+evilmtodd@gmail.com",
+				Primary: true,
+			}},
+			Active: true,
+		}
+		err = client.addHandler(user)
 	default:
 		log.Fatalf("error: unknown command\n\n%s", usage)
 	}
