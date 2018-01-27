@@ -200,12 +200,16 @@ func main() {
 		baseURL = defaultBaseURL
 	}
 
+	// required flags
 	org := flag.String("o", "", "")
+
+	// general flags
 	debug := flag.Bool("d", false, "")
+
 	flag.Parse()
 
 	if *org == "" {
-		log.Fatalf("error: -o organization flag is required\n\n%s", usage)
+		log.Fatalf("error: -o organization is required\n\n%s", usage)
 	}
 
 	if token == "" {
@@ -241,21 +245,68 @@ func main() {
 		guid := flag.Arg(1)
 		err = client.removeHandler(guid)
 	case "add":
+		// `add` command flags
+		addCommand := flag.NewFlagSet("add", flag.ExitOnError)
+		addCommandFlags := struct {
+			externalID   *string
+			userName     *string
+			givenName    *string
+			familyName   *string
+			emailValue   *string
+			emailType    *string
+			emailPrimary *bool
+			active       *bool
+		}{
+			externalID:   addCommand.String("externalId", "", ""),
+			userName:     addCommand.String("userName", "", ""),
+			givenName:    addCommand.String("name.given", "", ""),
+			familyName:   addCommand.String("name.family", "", ""),
+			emailValue:   addCommand.String("email", "", ""),
+			emailType:    addCommand.String("email.type", "work", ""),
+			emailPrimary: addCommand.Bool("email.primary", true, ""),
+			active:       addCommand.Bool("active", true, ""),
+		}
+
+		addCommand.Parse(flag.Args()[1:])
+
+		// userName field
+		if *addCommandFlags.userName == "" {
+			log.Fatalf("error: -userName is required\n\n%s", usage)
+		}
+
+		// name fields
+		if *addCommandFlags.givenName == "" {
+			log.Fatalf("error: -name.given is required\n\n%s", usage)
+		}
+		if *addCommandFlags.familyName == "" {
+			log.Fatalf("error: -name.family is required\n\n%s", usage)
+		}
+
+		// email fields
+		if *addCommandFlags.emailValue == "" {
+			log.Fatalf("error: -email is required\n\n%s", usage)
+		}
+
 		user := scim.User{
 			Schemas:    []string{scim.UserSchema},
-			ExternalID: "evilmtodd",
-			UserName:   "evilmtodd",
+			ExternalID: *addCommandFlags.externalID,
+			UserName:   *addCommandFlags.userName,
 			Name: scim.Name{
-				GivenName:  "Evil",
-				FamilyName: "Mtodd",
+				GivenName:  *addCommandFlags.givenName,
+				FamilyName: *addCommandFlags.familyName,
 			},
 			Emails: []scim.Email{{
-				Type:    "work",
-				Value:   "chiology+evilmtodd@gmail.com",
-				Primary: true,
+				Type:    *addCommandFlags.emailType,
+				Value:   *addCommandFlags.emailValue,
+				Primary: *addCommandFlags.emailPrimary,
 			}},
-			Active: true,
+			Active: *addCommandFlags.active,
 		}
+
+		if client.debug {
+			log.Printf("debug: %#v", user)
+		}
+
 		err = client.addHandler(user)
 	default:
 		log.Fatalf("error: unknown command\n\n%s", usage)

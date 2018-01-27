@@ -35,11 +35,11 @@ const UserSchema = "urn:ietf:params:scim:schemas:core:2.0:User"
 type User struct {
 	Schemas    []string `json:"schemas"`
 	ID         string   `json:"id,omitempty"`
-	ExternalID string   `json:"externalId"`
+	ExternalID string   `json:"externalId,omitempty"`
 	UserName   string   `json:"userName"`
 	Name       Name     `json:"name"`
 	Emails     []Email  `json:"emails"`
-	Active     bool     `json:"active"`
+	Active     bool     `json:"active,omitempty"`
 	Metadata   Metadata `json:"meta,omitempty"`
 }
 
