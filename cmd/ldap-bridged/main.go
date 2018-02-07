@@ -1,10 +1,13 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
 	"time"
+
+	"github.com/boltdb/bolt"
 
 	"github.com/mtodd/ldapwatch"
 
@@ -135,6 +138,22 @@ func main() {
 	if err = conn.Bind("cn=admin,dc=planetexpress,dc=com", "GoodNewsEveryone"); err != nil {
 		log.Fatal(err)
 	}
+
+	db, err := bolt.Open("bridge.db", 0600, nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer db.Close()
+
+	var b *bolt.Bucket
+	db.Update(func(tx *bolt.Tx) error {
+		b, err = tx.CreateBucketIfNotExists([]byte("users"))
+		if err != nil {
+			return fmt.Errorf("create bucket: %s", err)
+		}
+		return nil
+	})
+	log.Printf("%+v", b)
 
 	updates := make(chan event)
 	done := make(chan struct{})
