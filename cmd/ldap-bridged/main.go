@@ -34,7 +34,7 @@ func newBridge(idp idp.LDAPProvider, sp sp.SCIMProvider, db *bolt.DB) bridge {
 	}
 }
 
-func (b *bridge) Open() error {
+func (b *bridge) Init() error {
 	b.users = users.New(b.db)
 	b.users.Prepare()
 
@@ -173,7 +173,7 @@ func main() {
 	sp := sp.NewSCIMProvider()
 	b := newBridge(lb, sp, db)
 
-	if err = b.Open(); err != nil {
+	if err = b.Init(); err != nil {
 		log.Fatal(err)
 	}
 
