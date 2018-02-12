@@ -104,19 +104,37 @@ func (u *Users) Prepare() error {
 
 // GetGUID ...
 func (u *Users) GetGUID(dn string) (string, error) {
-	guid := u.dnIdx.Get([]byte(dn))
-	if len(guid) == 0 {
-		return "", fmt.Errorf("GetGUID(%s) failed: not found", dn)
+	tx, err := u.db.Begin(false)
+	if err != nil {
+		return "", err
 	}
+	defer tx.Rollback()
+
+	root := tx.Bucket([]byte("ldap-scim"))
+	dnIdx := root.Bucket([]byte("dns"))
+
+	guid := dnIdx.Get([]byte(dn))
+	// if len(guid) == 0 {
+	// 	return "", fmt.Errorf("GetGUID(%s) failed: not found", dn)
+	// }
 	return string(guid), nil
 }
 
 // GetDN ...
 func (u *Users) GetDN(guid string) (string, error) {
-	dn := u.guidIdx.Get([]byte(guid))
-	if len(dn) == 0 {
-		return "", fmt.Errorf("GetDN(%s) failed: not found", guid)
+	tx, err := u.db.Begin(false)
+	if err != nil {
+		return "", err
 	}
+	defer tx.Rollback()
+
+	root := tx.Bucket([]byte("ldap-scim"))
+	guidIdx := root.Bucket([]byte("guids"))
+
+	dn := guidIdx.Get([]byte(guid))
+	// if len(dn) == 0 {
+	// 	return "", fmt.Errorf("GetDN(%s) failed: not found", guid)
+	// }
 	return string(dn), nil
 }
 

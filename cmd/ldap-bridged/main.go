@@ -36,9 +36,90 @@ func newBridge(idp idp.LDAPProvider, sp sp.SCIMProvider, db *bolt.DB) bridge {
 
 func (b *bridge) Init() error {
 	b.users = users.New(b.db)
-	b.users.Prepare()
+	if err := b.users.Prepare(); err != nil {
+		return err
+	}
 
 	return nil
+}
+
+// Sync ensures the bridge and SP are up-to-date based on the IdP.
+func (b *bridge) Sync() error {
+	// fetch current SP list
+	spList, err := b.sp.List()
+	if err != nil {
+		return err
+	}
+	spDns := make([]string, len(spList))
+	log.Printf("Init: sp list: %+v", spList)
+
+	// fetch LDAP list
+	idpRes, err := b.idp.Search(nil)
+	if err != nil {
+		return err
+	}
+	group := idpRes.Entries[0]
+	if group == nil {
+		return fmt.Errorf("LDAP search failed to find group")
+	}
+	memberDns := group.GetAttributeValues("member")
+	log.Printf("Init: idp res: %+v", idpRes)
+	idpRes.PrettyPrint(2)
+
+	// update bridge store to reflect what's in the SP
+	for _, spUser := range spList {
+		dn, err := b.users.GetDN(spUser.ID)
+		if err != nil {
+			return err
+		} else if dn == "" {
+			// we don't know about this GUID yet
+			idpRes, err := b.idp.FetchUID(spUser.UserName)
+			if err != nil {
+				return err
+			}
+			idpUser := idpRes[0]
+			if idpUser == nil {
+				// probably should clear this entry from the SP
+			}
+			b.users.Add(idpUser.DN, spUser)
+		} else if !isMember(memberDns, dn) {
+			b.Del(dn)
+		} else {
+			spDns = append(spDns, dn)
+		}
+	}
+
+	// update the SP with what's in the IdP
+	for _, memberDn := range memberDns {
+		guid, err := b.users.GetGUID(memberDn)
+		if err != nil {
+			return err
+		} else if guid == "" {
+			// if we don't know about this DN already, it's not on the SP
+			b.Add(memberDn)
+		} else if !isMember(spDns, memberDn) {
+			entry, err := b.idp.Fetch(memberDn)
+			if err != nil {
+				return err
+			}
+			user, err := b.mapEntry(entry)
+			if err != nil {
+				return err
+			}
+			b.sp.Add(user)
+		}
+	}
+
+	return nil
+}
+
+func isMember(list []string, candidate string) bool {
+	for _, v := range list {
+		if v == candidate {
+			return true
+		}
+	}
+	return false
 }
 
 func (b *bridge) Start() {
@@ -88,6 +169,8 @@ func (b *bridge) Add(dn string) {
 	if err = b.users.Add(dn, user); err != nil {
 		log.Printf("add: bridge store failed: %s", err)
 	}
+
+	log.Printf("add: %s added", dn)
 }
 
 func (b *bridge) Del(dn string) {
@@ -169,11 +252,25 @@ func main() {
 	}
 	defer db.Close()
 
-	lb := idp.NewLDAPProvider(conn)
+	// Search to monitor for changes
+	searchRequest := ldap.NewSearchRequest(
+		"ou=people,dc=planetexpress,dc=com",
+		ldap.ScopeWholeSubtree, ldap.NeverDerefAliases, 0, 0, false,
+		// "(cn=ship_crew)",
+		"(cn=test_group)",
+		[]string{"*", "modifyTimestamp"},
+		nil,
+	)
+
+	lb := idp.NewLDAPProvider(conn, searchRequest)
 	sp := sp.NewSCIMProvider()
 	b := newBridge(lb, sp, db)
 
 	if err = b.Init(); err != nil {
+		log.Fatal(err)
+	}
+
+	if err = b.Sync(); err != nil {
 		log.Fatal(err)
 	}
 

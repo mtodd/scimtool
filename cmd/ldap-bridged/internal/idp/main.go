@@ -13,15 +13,17 @@ import (
 // LDAPProvider ...
 type LDAPProvider struct {
 	conn    *ldap.Conn
+	sr      *ldap.SearchRequest
 	Added   chan string
 	Removed chan string
 	done    chan struct{}
 }
 
 // NewLDAPProvider ...
-func NewLDAPProvider(conn *ldap.Conn) LDAPProvider {
+func NewLDAPProvider(conn *ldap.Conn, sr *ldap.SearchRequest) LDAPProvider {
 	return LDAPProvider{
 		conn:    conn,
+		sr:      sr,
 		Added:   make(chan string),
 		Removed: make(chan string),
 		done:    make(chan struct{}),
@@ -45,18 +47,8 @@ func (p *LDAPProvider) Start() error {
 		c: updates,
 	}
 
-	// Search to monitor for changes
-	searchRequest := ldap.NewSearchRequest(
-		"ou=people,dc=planetexpress,dc=com",
-		ldap.ScopeWholeSubtree, ldap.NeverDerefAliases, 0, 0, false,
-		// "(cn=ship_crew)",
-		"(cn=test_group)",
-		[]string{"*", "modifyTimestamp"},
-		nil,
-	)
-
 	// register the search
-	w.Add(searchRequest, &c)
+	w.Add(p.sr, &c)
 
 	w.Start()
 
@@ -199,4 +191,31 @@ func (p *LDAPProvider) Fetch(dn string) (*ldap.Entry, error) {
 	}
 
 	return res.Entries[0], nil
+}
+
+// FetchUid ...
+func (p *LDAPProvider) FetchUID(uids ...string) ([]*ldap.Entry, error) {
+	filter := fmt.Sprintf("(uid=%s)", uids[0])
+	req := ldap.NewSearchRequest(
+		p.sr.BaseDN,
+		ldap.ScopeWholeSubtree, ldap.NeverDerefAliases, 0, 0, false,
+		fmt.Sprintf("(&(objectClass=*)(%s))", filter),
+		[]string{"dn", "uid", "cn", "sn", "givenName", "mail", "modifyTimestamp"},
+		nil,
+	)
+
+	res, err := p.conn.Search(req)
+	if err != nil {
+		return nil, fmt.Errorf("fetch by UID (%s) failed: %s", uids, err)
+	}
+
+	return res.Entries, nil
+}
+
+// Search ...
+func (p *LDAPProvider) Search(req *ldap.SearchRequest) (*ldap.SearchResult, error) {
+	if req == nil {
+		req = p.sr
+	}
+	return p.conn.Search(req)
 }
