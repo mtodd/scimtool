@@ -1,131 +1,121 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"os"
 	"os/signal"
-	"time"
 
 	"github.com/boltdb/bolt"
 
-	"github.com/mtodd/ldapwatch"
+	scim "github.com/mtodd/scimtool"
+	"github.com/mtodd/scimtool/cmd/ldap-bridged/internal/db"
+	"github.com/mtodd/scimtool/cmd/ldap-bridged/internal/idp"
+	"github.com/mtodd/scimtool/cmd/ldap-bridged/internal/sp"
 
 	ldap "gopkg.in/ldap.v2"
 )
 
-type event struct {
-	before *ldap.Entry
-	after  *ldap.Entry
+type bridge struct {
+	idp   idp.LDAPProvider
+	sp    sp.SCIMProvider
+	db    *bolt.DB
+	users users.Users
 }
 
-// Implements the ldapwatch.Checker interface in order to check whether
-// the search results change over time.
-//
-// In this case, our Checker keeps track of previous results as well as
-// holding a channel that we notify whenever changes are detected.
-type groupMembershipChecker struct {
-	prev *ldap.SearchResult
-	c    chan event
+func newBridge(idp idp.LDAPProvider, sp sp.SCIMProvider, db *bolt.DB) bridge {
+	return bridge{
+		idp: idp,
+		sp:  sp,
+		db:  db,
+	}
 }
 
-// Check receives the result of the search; the Checker needs to take action
-// if the result does not match what it expects.
-func (c *groupMembershipChecker) Check(r *ldap.SearchResult, err error) {
-	if err != nil {
-		log.Printf("%s", err)
-		return
-	}
+func (b *bridge) Open() error {
+	b.users = users.New(b.db)
+	b.users.Prepare()
 
-	// first search sets baseline
-	if c.prev == nil {
-		c.prev = r
-		r.PrettyPrint(2)
-		return
-	}
-
-	if len(c.prev.Entries) != len(r.Entries) {
-		// entries returned does not match
-		c.prev = r
-		return
-	}
-
-	prevEntry := c.prev.Entries[0]
-	nextEntry := r.Entries[0]
-
-	if prevEntry.GetAttributeValue("modifyTimestamp") != nextEntry.GetAttributeValue("modifyTimestamp") {
-		// modifyTimestamp changed
-		c.prev = r
-		c.c <- event{prevEntry, nextEntry}
-		return
-	}
-
-	// no change
+	return nil
 }
 
-type changes struct {
-	added   []string
-	removed []string
+func (b *bridge) Start() {
+	go b.run()
+	b.idp.Start()
 }
 
-func computeChanges(before *ldap.Entry, after *ldap.Entry) changes {
-	c := changes{}
-
-	bs := make(map[string]bool, len(before.GetAttributeValues("member")))
-	as := make(map[string]bool, len(after.GetAttributeValues("member")))
-
-	for _, dn := range before.GetAttributeValues("member") {
-		bs[dn] = true
-	}
-	for _, dn := range after.GetAttributeValues("member") {
-		as[dn] = true
-	}
-
-	added := make(map[string]bool, len(before.GetAttributeValues("member")))
-	removed := make(map[string]bool, len(after.GetAttributeValues("member")))
-
-	for dn := range as {
-		// everything in the after list could've been added
-		added[dn] = true
-	}
-	for dn := range bs {
-		// it wasn't added if it was in the before list, so remove it
-		delete(added, dn)
-	}
-
-	for dn := range added {
-		c.added = append(c.added, dn)
-	}
-
-	for dn := range bs {
-		// everything in the before list could've been removed
-		removed[dn] = true
-	}
-	for dn := range as {
-		// it wasn't removed if it was in the after list, so remove it
-		delete(removed, dn)
-	}
-
-	for dn := range removed {
-		c.removed = append(c.removed, dn)
-	}
-
-	return c
-}
-
-func handleUpdates(c chan event, done chan struct{}) {
+func (b *bridge) run() {
 	for {
 		select {
-		case e := <-c:
-			before := e.before
-			after := e.after
-			log.Printf("change detected: %s", after.DN)
-			c := computeChanges(before, after)
-			log.Printf("%+v", c)
-		case <-done:
-			return
+		case dn := <-b.idp.Added:
+			b.Add(dn)
+		case dn := <-b.idp.Removed:
+			b.Del(dn)
 		}
 	}
+}
+
+func (b *bridge) Add(dn string) {
+	log.Printf("add: %s", dn)
+
+	// fetch LDAP User
+	entry, err := b.idp.Fetch(dn)
+	if err != nil {
+		return
+	}
+	entry.PrettyPrint(2)
+	// log.Printf("%+v", entry)
+
+	// build SCIM User representation (map LDAP to SCIM attributes)
+	user, _ := b.mapEntry(entry)
+	log.Printf("%+v", user)
+
+	// write to SCIM
+	guid, err := b.sp.Add(user)
+	if err != nil {
+		log.Printf("add: scim failed: %s", err)
+	}
+
+	// receive GUID
+	user.ID = guid
+
+	// persist membership
+	// persist DN-to-GUID mapping
+	// persist GUID-to-DN mapping
+	if err = b.users.Add(dn, user); err != nil {
+		log.Printf("add: bridge store failed: %s", err)
+	}
+}
+
+func (b *bridge) Del(dn string) {
+	log.Printf("remove: %s", dn)
+}
+
+// mapEntry takes an LDAP entry, maps to a SCIM user representation
+func (b *bridge) mapEntry(entry *ldap.Entry) (scim.User, error) {
+	// u := users.User{
+	// 	DN:        entry.DN,
+	// 	GUID:      "",
+	// 	UserName:  entry.GetAttributeValue("uid"),
+	// 	FirstName: entry.GetAttributeValue("givenName"),
+	// 	LastName:  entry.GetAttributeValue("sn"),
+	// 	Email:     entry.GetAttributeValue("mail"),
+	// }
+
+	user := scim.User{
+		Schemas:  []string{scim.UserSchema},
+		UserName: entry.GetAttributeValue("uid"),
+		Name: scim.Name{
+			GivenName:  entry.GetAttributeValue("givenName"),
+			FamilyName: entry.GetAttributeValue("sn"),
+		},
+		Emails: []scim.Email{{
+			Type:    "work",
+			Value:   entry.GetAttributeValue("mail"),
+			Primary: true,
+		}},
+		Active: true,
+	}
+
+	return user, nil
 }
 
 func main() {
@@ -145,49 +135,19 @@ func main() {
 	}
 	defer db.Close()
 
-	var b *bolt.Bucket
-	db.Update(func(tx *bolt.Tx) error {
-		b, err = tx.CreateBucketIfNotExists([]byte("users"))
-		if err != nil {
-			return fmt.Errorf("create bucket: %s", err)
-		}
-		return nil
-	})
-	log.Printf("%+v", b)
+	lb := idp.NewLDAPProvider(conn)
+	sp := sp.NewSCIMProvider()
+	b := newBridge(lb, sp, db)
 
-	updates := make(chan event)
-	done := make(chan struct{})
-	defer func() { close(done) }()
-	go handleUpdates(updates, done)
-
-	w, err := ldapwatch.NewWatcher(conn, 1*time.Second, nil)
-	if err != nil {
+	if err = b.Open(); err != nil {
 		log.Fatal(err)
 	}
-	defer w.Stop()
-
-	c := groupMembershipChecker{
-		c: updates,
-	}
-
-	// Search to monitor for changes
-	searchRequest := ldap.NewSearchRequest(
-		"ou=people,dc=planetexpress,dc=com",
-		ldap.ScopeWholeSubtree, ldap.NeverDerefAliases, 0, 0, false,
-		// "(cn=ship_crew)",
-		"(cn=test_group)",
-		[]string{"*", "modifyTimestamp"},
-		nil,
-	)
-
-	// register the search
-	w.Add(searchRequest, &c)
 
 	// run until SIGINT is triggered
 	term := make(chan os.Signal, 1)
 	signal.Notify(term, os.Interrupt)
 
-	w.Start()
+	b.Start()
 
 	<-term
 }
