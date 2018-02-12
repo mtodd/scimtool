@@ -149,7 +149,7 @@ func (u *Users) Add(dn string, user scim.User) error {
 	dnIdx := root.Bucket([]byte("dns"))
 
 	// Marshal and save the encoded user.
-	if buf, err := json.Marshal(u); err != nil {
+	if buf, err := json.Marshal(user); err != nil {
 		return err
 	} else if err := members.Put(guid, buf); err != nil {
 		return err
