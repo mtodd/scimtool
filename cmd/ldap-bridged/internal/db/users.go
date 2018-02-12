@@ -190,3 +190,32 @@ func (u *Users) Delete(user User) error {
 
 	return nil
 }
+
+// List ...
+func (u *Users) List() ([]scim.User, error) {
+	list := make([]scim.User, 0)
+
+	tx, err := u.db.Begin(false)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	root := tx.Bucket([]byte(u.store))
+	members := root.Bucket([]byte("members"))
+	if err := members.ForEach(func(k []byte, v []byte) error {
+		u := scim.User{}
+		// log.Printf("%+v %+v", string(k), string(v))
+		if err := json.Unmarshal(v, &u); err != nil {
+			return err
+		}
+
+		list = append(list, u)
+
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+
+	return list, nil
+}
