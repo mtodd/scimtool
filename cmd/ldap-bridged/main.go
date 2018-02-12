@@ -1,7 +1,11 @@
 package main
 
 import (
+	"encoding/json"
+	"fmt"
 	"log"
+	"net"
+	"net/http"
 	"os"
 	"os/signal"
 
@@ -39,6 +43,7 @@ func (b *bridge) Open() error {
 
 func (b *bridge) Start() {
 	go b.run()
+	go b.startHTTP()
 	b.idp.Start()
 }
 
@@ -116,6 +121,35 @@ func (b *bridge) mapEntry(entry *ldap.Entry) (scim.User, error) {
 	}
 
 	return user, nil
+}
+
+func (b *bridge) startHTTP() {
+	mux := http.NewServeMux()
+	mux.Handle("/_debug", b)
+	l, _ := net.Listen("tcp", ":4444")
+	defer l.Close()
+	srv := http.Server{
+		Handler: mux,
+	}
+	log.Println("listening for web on :4444")
+	srv.Serve(l)
+}
+
+func (b *bridge) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	log.Println("HTTP debug request")
+
+	list, err := b.users.List()
+	if err != nil {
+		w.WriteHeader(500)
+		fmt.Fprintf(w, "oops: %s", err)
+	}
+
+	buf, err := json.Marshal(list)
+	if err != nil {
+		w.WriteHeader(500)
+		fmt.Fprintf(w, "oops: %s", err)
+	}
+	fmt.Fprintf(w, "%s", buf)
 }
 
 func main() {
