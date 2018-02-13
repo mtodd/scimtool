@@ -28,6 +28,12 @@ import (
 
 */
 
+const (
+	membersBucketName = "members"
+	guidIdxBucketName = "guids"
+	dnIdxBucketName   = "dns"
+)
+
 // User ...
 type User struct {
 	DN        string
@@ -40,19 +46,15 @@ type User struct {
 
 // Users ...
 type Users struct {
-	store   string
-	db      *bolt.DB
-	root    *bolt.Bucket
-	members *bolt.Bucket
-	dnIdx   *bolt.Bucket
-	guidIdx *bolt.Bucket
+	rootBucketName []byte
+	db             *bolt.DB
 }
 
 // New ...
 func New(db *bolt.DB) Users {
 	return Users{
-		store: "ldap-scim",
-		db:    db,
+		rootBucketName: []byte("ldap-scim"),
+		db:             db,
 	}
 }
 
@@ -66,33 +68,28 @@ func (u *Users) Prepare() error {
 	defer tx.Rollback()
 
 	// create the root IdP bucket.
-	root, err := tx.CreateBucketIfNotExists([]byte(u.store))
+	root, err := tx.CreateBucketIfNotExists([]byte(u.rootBucketName))
 	if err != nil {
-		return fmt.Errorf("create ldap-scim bucket: %s", err)
+		return fmt.Errorf("create %s bucket: %s", u.rootBucketName, err)
 	}
 
 	// create membership bucket
-	mb, err := root.CreateBucketIfNotExists([]byte("members"))
+	_, err = root.CreateBucketIfNotExists([]byte(membersBucketName))
 	if err != nil {
 		return fmt.Errorf("create members bucket: %s", err)
 	}
 
 	// create DN-to-GUID index
-	guids, err := root.CreateBucketIfNotExists([]byte("guids"))
+	_, err = root.CreateBucketIfNotExists([]byte(guidIdxBucketName))
 	if err != nil {
 		return fmt.Errorf("create guids index bucket: %s", err)
 	}
 
 	// create GUID-to-DN index
-	dns, err := root.CreateBucketIfNotExists([]byte("dns"))
+	_, err = root.CreateBucketIfNotExists([]byte(dnIdxBucketName))
 	if err != nil {
 		return fmt.Errorf("create dns bucket: %s", err)
 	}
-
-	u.root = root
-	u.members = mb
-	u.guidIdx = guids
-	u.dnIdx = dns
 
 	// Commit the transaction.
 	if err := tx.Commit(); err != nil {
@@ -110,8 +107,8 @@ func (u *Users) GetGUID(dn string) (string, error) {
 	}
 	defer tx.Rollback()
 
-	root := tx.Bucket([]byte("ldap-scim"))
-	dnIdx := root.Bucket([]byte("dns"))
+	root := tx.Bucket(u.rootBucketName)
+	dnIdx := root.Bucket([]byte(dnIdxBucketName))
 
 	guid := dnIdx.Get([]byte(dn))
 	// if len(guid) == 0 {
@@ -128,8 +125,8 @@ func (u *Users) GetDN(guid string) (string, error) {
 	}
 	defer tx.Rollback()
 
-	root := tx.Bucket([]byte("ldap-scim"))
-	guidIdx := root.Bucket([]byte("guids"))
+	root := tx.Bucket(u.rootBucketName)
+	guidIdx := root.Bucket([]byte(guidIdxBucketName))
 
 	dn := guidIdx.Get([]byte(guid))
 	// if len(dn) == 0 {
@@ -141,10 +138,23 @@ func (u *Users) GetDN(guid string) (string, error) {
 // GetMemberDNs ...
 func (u *Users) GetMemberDNs() ([]string, error) {
 	dns := []string{}
-	u.guidIdx.ForEach(func(k []byte, v []byte) error {
+
+	tx, err := u.db.Begin(false)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	root := tx.Bucket(u.rootBucketName)
+	guidIdx := root.Bucket([]byte(guidIdxBucketName))
+
+	if err := guidIdx.ForEach(func(k []byte, v []byte) error {
 		dns = append(dns, string(k))
 		return nil
-	})
+	}); err != nil {
+		return nil, err
+	}
+
 	return nil, nil
 }
 
@@ -161,10 +171,10 @@ func (u *Users) Add(dn string, user scim.User) error {
 	guid := []byte(user.ID)
 
 	// Retrieve the root->members bucket.
-	root := tx.Bucket([]byte("ldap-scim"))
-	members := root.Bucket([]byte("members"))
-	guidIdx := root.Bucket([]byte("guids"))
-	dnIdx := root.Bucket([]byte("dns"))
+	root := tx.Bucket(u.rootBucketName)
+	members := root.Bucket([]byte(membersBucketName))
+	guidIdx := root.Bucket([]byte(guidIdxBucketName))
+	dnIdx := root.Bucket([]byte(dnIdxBucketName))
 
 	// Marshal and save the encoded user.
 	if buf, err := json.Marshal(user); err != nil {
@@ -193,16 +203,28 @@ func (u *Users) Add(dn string, user scim.User) error {
 
 // Delete ...
 func (u *Users) Delete(user User) error {
-	if err := u.db.Update(func(tx *bolt.Tx) error {
-		// remove membership
-		u.members.Delete([]byte(user.GUID))
+	// Start the transaction.
+	tx, err := u.db.Begin(true)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
 
-		// clear indexes
-		u.dnIdx.Delete([]byte(user.DN))
-		u.guidIdx.Delete([]byte(user.GUID))
+	// Retrieve the root->members bucket.
+	root := tx.Bucket(u.rootBucketName)
+	members := root.Bucket([]byte(membersBucketName))
+	guidIdx := root.Bucket([]byte(guidIdxBucketName))
+	dnIdx := root.Bucket([]byte(dnIdxBucketName))
 
-		return nil
-	}); err != nil {
+	// remove membership
+	members.Delete([]byte(user.GUID))
+
+	// clear indexes
+	dnIdx.Delete([]byte(user.DN))
+	guidIdx.Delete([]byte(user.GUID))
+
+	// Commit the transaction.
+	if err := tx.Commit(); err != nil {
 		return err
 	}
 
@@ -219,8 +241,8 @@ func (u *Users) List() ([]scim.User, error) {
 	}
 	defer tx.Rollback()
 
-	root := tx.Bucket([]byte(u.store))
-	members := root.Bucket([]byte("members"))
+	root := tx.Bucket([]byte(u.rootBucketName))
+	members := root.Bucket([]byte(membersBucketName))
 	if err := members.ForEach(func(k []byte, v []byte) error {
 		u := scim.User{}
 		// log.Printf("%+v %+v", string(k), string(v))
