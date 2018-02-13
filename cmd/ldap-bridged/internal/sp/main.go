@@ -8,6 +8,8 @@ import (
 	scim "github.com/mtodd/scimtool"
 )
 
+// scim "github.com/imulab/go-scim/shared"
+
 // SCIMProvider ...
 type SCIMProvider struct {
 	store map[string]scim.User
@@ -22,9 +24,6 @@ func NewSCIMProvider() SCIMProvider {
 
 // Add ...
 func (sp *SCIMProvider) Add(u scim.User) (string, error) {
-	// guid := "meow"
-	// uid := rand.Int63()
-	// guid := strconv.FormatInt(uid, 64)
 	h := sha256.New()
 	h.Write([]byte(u.UserName))
 	guid := base64.StdEncoding.EncodeToString(h.Sum(nil))
