@@ -189,6 +189,11 @@ func (b *bridge) Del(dn string) {
 		log.Printf("remove: %s failed: %s", guid, err)
 		return
 	}
+
+	if err = b.users.Del(guid, dn); err != nil {
+		log.Printf("remove: bridge store failed: %s", err)
+		return
+	}
 }
 
 // mapEntry takes an LDAP entry, maps to a SCIM user representation

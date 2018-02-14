@@ -201,8 +201,8 @@ func (u *Users) Add(dn string, user scim.User) error {
 	return nil
 }
 
-// Delete ...
-func (u *Users) Delete(user User) error {
+// Del ...
+func (u *Users) Del(guid, dn string) error {
 	// Start the transaction.
 	tx, err := u.db.Begin(true)
 	if err != nil {
@@ -217,11 +217,11 @@ func (u *Users) Delete(user User) error {
 	dnIdx := root.Bucket([]byte(dnIdxBucketName))
 
 	// remove membership
-	members.Delete([]byte(user.GUID))
+	members.Delete([]byte(guid))
 
 	// clear indexes
-	dnIdx.Delete([]byte(user.DN))
-	guidIdx.Delete([]byte(user.GUID))
+	dnIdx.Delete([]byte(dn))
+	guidIdx.Delete([]byte(guid))
 
 	// Commit the transaction.
 	if err := tx.Commit(); err != nil {
