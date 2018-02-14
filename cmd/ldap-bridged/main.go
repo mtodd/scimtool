@@ -235,18 +235,47 @@ func (b *bridge) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	fmt.Fprintf(w, "%s", buf)
 }
 
+type ldapConfig struct {
+	addr   string
+	bindDn string
+	bindPw string
+	baseDn string
+	group  string
+}
+
+type config struct {
+	ldap   ldapConfig
+	dbPath string
+}
+
+func loadConfig() config {
+	c := config{
+		ldap: ldapConfig{
+			addr:   "localhost:389",
+			bindDn: "cn=admin,dc=planetexpress,dc=com",
+			bindPw: "GoodNewsEveryone",
+			baseDn: "ou=people,dc=planetexpress,dc=com",
+			group:  "idptool",
+		},
+		dbPath: "bridge.db",
+	}
+	return c
+}
+
 func main() {
-	conn, err := ldap.Dial("tcp", "localhost:389")
+	c := loadConfig()
+
+	conn, err := ldap.Dial("tcp", c.ldap.addr)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer conn.Close()
 
-	if err = conn.Bind("cn=admin,dc=planetexpress,dc=com", "GoodNewsEveryone"); err != nil {
+	if err = conn.Bind(c.ldap.bindDn, c.ldap.bindPw); err != nil {
 		log.Fatal(err)
 	}
 
-	db, err := bolt.Open("bridge.db", 0600, nil)
+	db, err := bolt.Open(c.dbPath, 0600, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -254,10 +283,9 @@ func main() {
 
 	// Search to monitor for changes
 	searchRequest := ldap.NewSearchRequest(
-		"ou=people,dc=planetexpress,dc=com",
+		c.ldap.baseDn,
 		ldap.ScopeWholeSubtree, ldap.NeverDerefAliases, 0, 0, false,
-		// "(cn=ship_crew)",
-		"(cn=test_group)",
+		fmt.Sprintf("(cn=%s)", c.ldap.group),
 		[]string{"*", "modifyTimestamp"},
 		nil,
 	)
