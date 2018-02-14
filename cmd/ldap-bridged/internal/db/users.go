@@ -163,7 +163,7 @@ func (u *Users) Add(dn string, user scim.User) error {
 	// Start the transaction.
 	tx, err := u.db.Begin(true)
 	if err != nil {
-		return err
+		return fmt.Errorf("begin: %s", err)
 	}
 	defer tx.Rollback()
 
@@ -178,9 +178,9 @@ func (u *Users) Add(dn string, user scim.User) error {
 
 	// Marshal and save the encoded user.
 	if buf, err := json.Marshal(user); err != nil {
-		return err
+		return fmt.Errorf("json marshal user(%s): %s", guid, err)
 	} else if err := members.Put(guid, buf); err != nil {
-		return err
+		return fmt.Errorf("persist member(%s): %s", guid, err)
 	}
 
 	// write GUID-to-DN index
@@ -195,7 +195,7 @@ func (u *Users) Add(dn string, user scim.User) error {
 
 	// Commit the transaction.
 	if err := tx.Commit(); err != nil {
-		return err
+		return fmt.Errorf("commit: %s", err)
 	}
 
 	return nil
