@@ -243,8 +243,15 @@ type ldapConfig struct {
 	group  string
 }
 
+type scimConfig struct {
+	org    string
+	token  string
+	dryRun bool
+}
+
 type config struct {
 	ldap   ldapConfig
+	scim   scimConfig
 	dbPath string
 }
 
@@ -256,6 +263,10 @@ func loadConfig() config {
 			bindPw: "GoodNewsEveryone",
 			baseDn: "ou=people,dc=planetexpress,dc=com",
 			group:  "idptool",
+		},
+		scim: scimConfig{
+			org:    "idptool",
+			dryRun: true,
 		},
 		dbPath: "bridge.db",
 	}
@@ -274,6 +285,16 @@ func loadConfig() config {
 	}
 	if group := os.Getenv("LDAP_GROUP"); group != "" {
 		c.ldap.group = group
+	}
+
+	if org := os.Getenv("SCIM_ORG"); org != "" {
+		c.scim.org = org
+	}
+	if token := os.Getenv("SCIM_TOKEN"); token != "" {
+		c.scim.token = token
+	}
+	if dryRun := os.Getenv("SCIM_DRY"); dryRun != "" {
+		c.scim.dryRun = dryRun == "false"
 	}
 
 	if dbPath := os.Getenv("DB"); dbPath != "" {
@@ -312,7 +333,7 @@ func main() {
 	)
 
 	lb := idp.NewLDAPProvider(conn, searchRequest)
-	sp := sp.NewSCIMProvider()
+	sp := sp.NewSCIMProvider(c.scim.org, c.scim.token, c.scim.dryRun)
 	b := newBridge(lb, sp, db)
 
 	if err = b.Init(); err != nil {

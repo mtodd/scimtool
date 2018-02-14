@@ -203,31 +203,26 @@ type scimProvider interface {
 // SCIMProvider ...
 type SCIMProvider struct {
 	client *scimProvider
+	cfg    scimProviderConfig
+}
+
+type scimProviderConfig struct {
+	token   string
+	baseURL string
+	org     string
+	dryRun  bool
 }
 
 // NewSCIMProvider ...
-func NewSCIMProvider() SCIMProvider {
-	// configuration
-	token := os.Getenv("TOKEN")
-
-	baseURL := os.Getenv("BASEURL")
+func NewSCIMProvider(org, token string, dryRun bool) SCIMProvider {
+	baseURL := os.Getenv("SCIM_BASEURL")
 	if baseURL == "" {
 		baseURL = defaultBaseURL
 	}
 
-	org := os.Getenv("ORG")
-	if org == "" {
-		org = "idptool"
-	}
-
 	var client scimProvider
 
-	dry := true
-	if os.Getenv("DRY") == "no" {
-		dry = false
-	}
-
-	if dry {
+	if dryRun {
 		client = &fakeAPIClient{
 			store: make(map[string]scim.User),
 		}
