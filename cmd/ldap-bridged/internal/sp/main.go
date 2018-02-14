@@ -233,6 +233,7 @@ func NewSCIMProvider(org, token string, dryRun bool) SCIMProvider {
 			baseURL: baseURL,
 			token:   token,
 			org:     org,
+			debug:   true,
 		}
 	}
 
