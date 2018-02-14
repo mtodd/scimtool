@@ -299,7 +299,7 @@ func loadConfig() config {
 		c.scim.token = token
 	}
 	if dryRun := os.Getenv("SCIM_DRY"); dryRun != "" {
-		c.scim.dryRun = dryRun == "false"
+		c.scim.dryRun = dryRun != "false"
 	}
 
 	if dbPath := os.Getenv("DB"); dbPath != "" {
