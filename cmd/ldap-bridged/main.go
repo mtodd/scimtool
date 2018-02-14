@@ -145,6 +145,7 @@ func (b *bridge) Add(dn string) {
 	// fetch LDAP User
 	entry, err := b.idp.Fetch(dn)
 	if err != nil {
+		log.Printf("add: IdP fetch(%s): %s", dn, err)
 		return
 	}
 	entry.PrettyPrint(2)
@@ -158,6 +159,7 @@ func (b *bridge) Add(dn string) {
 	guid, err := b.sp.Add(user)
 	if err != nil {
 		log.Printf("add: scim failed: %s", err)
+		return
 	}
 
 	// receive GUID
@@ -168,6 +170,7 @@ func (b *bridge) Add(dn string) {
 	// persist GUID-to-DN mapping
 	if err = b.users.Add(dn, user); err != nil {
 		log.Printf("add: bridge store failed: %s", err)
+		return
 	}
 
 	log.Printf("add: %s added", dn)
@@ -175,19 +178,21 @@ func (b *bridge) Add(dn string) {
 
 func (b *bridge) Del(dn string) {
 	log.Printf("remove: %s", dn)
+
+	guid, err := b.users.GetGUID(dn)
+	if err != nil {
+		log.Printf("remove: get guid(%s): %s", dn, err)
+		return
+	}
+
+	if err := b.sp.Del(guid); err != nil {
+		log.Printf("remove: %s failed: %s", guid, err)
+		return
+	}
 }
 
 // mapEntry takes an LDAP entry, maps to a SCIM user representation
 func (b *bridge) mapEntry(entry *ldap.Entry) (scim.User, error) {
-	// u := users.User{
-	// 	DN:        entry.DN,
-	// 	GUID:      "",
-	// 	UserName:  entry.GetAttributeValue("uid"),
-	// 	FirstName: entry.GetAttributeValue("givenName"),
-	// 	LastName:  entry.GetAttributeValue("sn"),
-	// 	Email:     entry.GetAttributeValue("mail"),
-	// }
-
 	user := scim.User{
 		Schemas:  []string{scim.UserSchema},
 		UserName: entry.GetAttributeValue("uid"),
