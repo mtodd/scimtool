@@ -259,6 +259,27 @@ func loadConfig() config {
 		},
 		dbPath: "bridge.db",
 	}
+
+	if addr := os.Getenv("LDAP_ADDR"); addr != "" {
+		c.ldap.addr = addr
+	}
+	if bindDn := os.Getenv("LDAP_BIND"); bindDn != "" {
+		c.ldap.bindDn = bindDn
+	}
+	if bindPw := os.Getenv("LDAP_PASS"); bindPw != "" {
+		c.ldap.bindPw = bindPw
+	}
+	if baseDn := os.Getenv("LDAP_BASE"); baseDn != "" {
+		c.ldap.baseDn = baseDn
+	}
+	if group := os.Getenv("LDAP_GROUP"); group != "" {
+		c.ldap.group = group
+	}
+
+	if dbPath := os.Getenv("DB"); dbPath != "" {
+		c.dbPath = dbPath
+	}
+
 	return c
 }
 
