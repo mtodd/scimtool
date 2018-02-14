@@ -30,7 +30,7 @@ func (c *fakeAPIClient) Add(u scim.User) (string, error) {
 	u.ID = guid
 	c.store[guid] = u
 
-	return "", nil
+	return guid, nil
 }
 
 func (c *fakeAPIClient) Del(guid string) error {
