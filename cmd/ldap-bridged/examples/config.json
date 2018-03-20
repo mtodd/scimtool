@@ -1,0 +1,25 @@
+{
+  "dbPath": "bridge.db",
+  "identityProviders": [
+    {
+      "adapter": "ldap",
+      "config": {
+        "check": "groupMembership",
+        "addr": "localhost:389",
+        "bindDn": "cn=admin,dc=planetexpress,dc=com",
+        "bindPw": "GoodNewsEveryone",
+        "baseDn": "ou=people,dc=planetexpress,dc=com",
+        "groupCN": "idptool"
+      },
+      "serviceProviders": [
+        {
+          "adapter": "scim",
+          "config": {
+            "organization": "idptool",
+            "dryRun": false
+          }
+        }
+      ]
+    }
+  ]
+}
