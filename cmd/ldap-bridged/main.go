@@ -2,7 +2,9 @@ package main
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
@@ -20,22 +22,43 @@ import (
 )
 
 type bridge struct {
+	cfg   bridgeConfig
 	idp   idp.LDAPProvider
 	sp    sp.SCIMProvider
+	idps  []identityProviderI
+	sps   []serviceProviderI
 	db    *bolt.DB
 	users users.Users
 }
 
-func newBridge(idp idp.LDAPProvider, sp sp.SCIMProvider, db *bolt.DB) bridge {
+func newBridge(cfg bridgeConfig) bridge {
+	idps := make([]identityProviderI, 1)
+	sps := make([]serviceProviderI, 1)
+
 	return bridge{
-		idp: idp,
-		sp:  sp,
-		db:  db,
+		cfg:  cfg,
+		idps: idps,
+		sps:  sps,
 	}
 }
 
+func (b *bridge) Link(spi serviceProviderI) error {
+	// LEGACY
+	scimsp := spi.(sp.SCIMProvider)
+	b.sp = scimsp
+
+	b.sps = append(b.sps, spi)
+	return nil
+}
+
 func (b *bridge) Init() error {
-	b.users = users.New(b.db)
+	db, err := bolt.Open(b.cfg.DBPath, 0600, nil)
+	if err != nil {
+		return fmt.Errorf("%s", err)
+	}
+	b.db = db
+
+	b.users = users.New(db)
 	if err := b.users.Prepare(); err != nil {
 		return err
 	}
@@ -122,10 +145,14 @@ func isMember(list []string, candidate string) bool {
 	return false
 }
 
-func (b *bridge) Start() {
+func (b *bridge) Start() error {
 	go b.run()
 	go b.startHTTP()
-	b.idp.Start()
+	return b.idp.Start()
+}
+
+func (b *bridge) Stop() {
+	b.db.Close()
 }
 
 func (b *bridge) run() {
@@ -262,103 +289,152 @@ type scimConfig struct {
 type config struct {
 	ldap   ldapConfig
 	scim   scimConfig
-	dbPath string
+	DBPath string
 }
 
-func loadConfig() config {
-	c := config{
-		ldap: ldapConfig{
-			addr:   "localhost:389",
-			bindDn: "cn=admin,dc=planetexpress,dc=com",
-			bindPw: "GoodNewsEveryone",
-			baseDn: "ou=people,dc=planetexpress,dc=com",
-			group:  "idptool",
-		},
-		scim: scimConfig{
-			org:    "idptool",
-			dryRun: true,
-		},
-		dbPath: "bridge.db",
+type serviceProviderConfig struct {
+	Adapter string                 `json:"adapter"`
+	Config  map[string]interface{} `json:"config"`
+}
+type identityProviderConfig struct {
+	Adapter          string                  `json:"adapter"`
+	Config           map[string]interface{}  `json:"config"`
+	ServiceProviders []serviceProviderConfig `json:"serviceProviders"`
+}
+type bridgeConfig struct {
+	DBPath            string                   `json:"dbPath"`
+	IdentityProviders []identityProviderConfig `json:"identityProviders"`
+}
+
+func loadConfigFile(c *bridgeConfig, path string) error {
+	dat, err := ioutil.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	log.Println(string(dat))
+
+	err = json.Unmarshal(dat, &c)
+	if err != nil {
+		return err
 	}
 
-	if addr := os.Getenv("LDAP_ADDR"); addr != "" {
-		c.ldap.addr = addr
-	}
-	if bindDn := os.Getenv("LDAP_BIND"); bindDn != "" {
-		c.ldap.bindDn = bindDn
-	}
-	if bindPw := os.Getenv("LDAP_PASS"); bindPw != "" {
-		c.ldap.bindPw = bindPw
-	}
-	if baseDn := os.Getenv("LDAP_BASE"); baseDn != "" {
-		c.ldap.baseDn = baseDn
-	}
-	if group := os.Getenv("LDAP_GROUP"); group != "" {
-		c.ldap.group = group
+	log.Printf("%#v", c)
+
+	return nil
+}
+
+func loadConfig() bridgeConfig {
+	c := bridgeConfig{}
+
+	configPath := flag.String("config", "", "specify a configuration file to load")
+
+	flag.Parse()
+
+	if len(*configPath) > 0 {
+		if err := loadConfigFile(&c, *configPath); err != nil {
+			panic(err)
+		}
 	}
 
-	if org := os.Getenv("SCIM_ORG"); org != "" {
-		c.scim.org = org
-	}
-	if token := os.Getenv("SCIM_TOKEN"); token != "" {
-		c.scim.token = token
-	}
-	if dryRun := os.Getenv("SCIM_DRY"); dryRun != "" {
-		c.scim.dryRun = dryRun != "false"
-	}
-
-	if dbPath := os.Getenv("DB"); dbPath != "" {
-		c.dbPath = dbPath
-	}
+	// if addr := os.Getenv("LDAP_ADDR"); addr != "" {
+	// 	c.ldap.addr = addr
+	// }
+	// if bindDn := os.Getenv("LDAP_BIND"); bindDn != "" {
+	// 	c.ldap.bindDn = bindDn
+	// }
+	// if bindPw := os.Getenv("LDAP_PASS"); bindPw != "" {
+	// 	c.ldap.bindPw = bindPw
+	// }
+	// if baseDn := os.Getenv("LDAP_BASE"); baseDn != "" {
+	// 	c.ldap.baseDn = baseDn
+	// }
+	// if group := os.Getenv("LDAP_GROUP"); group != "" {
+	// 	c.ldap.group = group
+	// }
+	//
+	// if org := os.Getenv("SCIM_ORG"); org != "" {
+	// 	c.scim.org = org
+	// }
+	// if token := os.Getenv("SCIM_TOKEN"); token != "" {
+	// 	c.scim.token = token
+	// }
+	// if dryRun := os.Getenv("SCIM_DRY"); dryRun != "" {
+	// 	c.scim.dryRun = dryRun != "false"
+	// }
+	//
+	// if dbPath := os.Getenv("DB"); dbPath != "" {
+	// 	c.dbPath = dbPath
+	// }
 
 	return c
 }
 
+type identityProvider struct {
+	cfg map[string]interface{}
+	sps []serviceProvider
+
+	spsi []serviceProviderI
+}
+
+type serviceProvider struct {
+	cfg map[string]interface{}
+}
+
+type identityProviderI interface{}
+type serviceProviderI interface{}
+
 func main() {
-	c := loadConfig()
+	var err error
 
-	conn, err := ldap.Dial("tcp", c.ldap.addr)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer conn.Close()
+	cfg := loadConfig()
 
-	if err = conn.Bind(c.ldap.bindDn, c.ldap.bindPw); err != nil {
-		log.Fatal(err)
+	if len(cfg.IdentityProviders) == 0 {
+		log.Fatalf("config: identity provider required")
 	}
 
-	db, err := bolt.Open(c.dbPath, 0600, nil)
-	if err != nil {
-		log.Fatal(err)
+	log.Printf("%#v", cfg)
+
+	b := newBridge(cfg)
+
+	for _, idpCfg := range cfg.IdentityProviders {
+		switch idpCfg.Adapter {
+		case "ldap":
+			lb := idp.NewLDAPProvider(idpCfg.Config)
+			log.Printf("loading LDAP provider: %#v", lb)
+
+			b.idp = lb
+			b.idps = append(b.idps, lb)
+
+			if len(idpCfg.ServiceProviders) == 0 {
+				log.Fatalf("config: service provider required for %s identity provider", idpCfg.Adapter)
+			}
+
+			for _, spCfg := range idpCfg.ServiceProviders {
+				sp := sp.NewSCIMProvider(spCfg.Config)
+				if err = b.Link(sp); err != nil {
+					log.Fatalf("config: service provider: link: %s", err)
+				}
+			}
+		default:
+			log.Fatalf("loadConfig: unrecognized IdP adapter: %s", idpCfg.Adapter)
+		}
 	}
-	defer db.Close()
-
-	// Search to monitor for changes
-	searchRequest := ldap.NewSearchRequest(
-		c.ldap.baseDn,
-		ldap.ScopeWholeSubtree, ldap.NeverDerefAliases, 0, 0, false,
-		fmt.Sprintf("(cn=%s)", c.ldap.group),
-		[]string{"*", "modifyTimestamp"},
-		nil,
-	)
-
-	lb := idp.NewLDAPProvider(conn, searchRequest)
-	sp := sp.NewSCIMProvider(c.scim.org, c.scim.token, c.scim.dryRun)
-	b := newBridge(lb, sp, db)
 
 	if err = b.Init(); err != nil {
-		log.Fatal(err)
+		log.Fatalf("bridge: init: %s", err)
 	}
 
+	if err = b.Start(); err != nil {
+		log.Fatalf("bridge: start: %s", err)
+	}
+	defer b.Stop()
+
 	if err = b.Sync(); err != nil {
-		log.Fatal(err)
+		log.Fatalf("bridge: sync: %s", err)
 	}
 
 	// run until SIGINT is triggered
 	term := make(chan os.Signal, 1)
 	signal.Notify(term, os.Interrupt)
-
-	b.Start()
-
 	<-term
 }

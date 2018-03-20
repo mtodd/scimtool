@@ -10,19 +10,81 @@ import (
 	ldap "gopkg.in/ldap.v2"
 )
 
+// LDAPProviderConfig ...
+type LDAPProviderConfig struct {
+	addr    string
+	bindDn  string
+	bindPw  string
+	baseDn  string
+	groupCn string
+	check   string
+}
+
 // LDAPProvider ...
 type LDAPProvider struct {
+	cfg     LDAPProviderConfig
 	conn    *ldap.Conn
 	sr      *ldap.SearchRequest
+	w       *ldapwatch.Watcher
 	Added   chan string
 	Removed chan string
 	done    chan struct{}
 }
 
+func parseConfig(cfg map[string]interface{}) LDAPProviderConfig {
+	c := LDAPProviderConfig{}
+
+	for k, v := range cfg {
+		switch k {
+		case "addr":
+			if s, ok := v.(string); ok {
+				c.addr = s
+			}
+		case "bindDn":
+			if s, ok := v.(string); ok {
+				c.bindDn = s
+			}
+		case "bindPw":
+			if s, ok := v.(string); ok {
+				c.bindPw = s
+			}
+		case "baseDn":
+			if s, ok := v.(string); ok {
+				c.baseDn = s
+			}
+		case "groupCN":
+			if s, ok := v.(string); ok {
+				c.groupCn = s
+			}
+		case "check":
+			if s, ok := v.(string); ok {
+				c.check = s
+			}
+		default:
+			log.Fatalf("LDAP: unrecognized config key: %s", k)
+		}
+	}
+
+	return c
+}
+
 // NewLDAPProvider ...
-func NewLDAPProvider(conn *ldap.Conn, sr *ldap.SearchRequest) LDAPProvider {
+func NewLDAPProvider(cfg map[string]interface{}) LDAPProvider {
+	c := parseConfig(cfg)
+
+	// log.Printf("NewLDAPProvider parseConfig: %#v", c)
+
+	// Search to monitor for changes
+	sr := ldap.NewSearchRequest(
+		c.baseDn,
+		ldap.ScopeWholeSubtree, ldap.NeverDerefAliases, 0, 0, false,
+		fmt.Sprintf("(cn=%s)", c.groupCn),
+		[]string{"*", "modifyTimestamp"},
+		nil,
+	)
+
 	return LDAPProvider{
-		conn:    conn,
+		cfg:     c,
 		sr:      sr,
 		Added:   make(chan string),
 		Removed: make(chan string),
@@ -34,14 +96,23 @@ func NewLDAPProvider(conn *ldap.Conn, sr *ldap.SearchRequest) LDAPProvider {
 func (p *LDAPProvider) Start() error {
 	updates := make(chan event)
 	done := make(chan struct{})
-	// defer func() { close(done) }()
-	go handleUpdates(p, updates, done)
+
+	conn, err := ldap.Dial("tcp", p.cfg.addr)
+	if err != nil {
+		log.Fatalf("LDAP: dial(%s): %s", p.cfg.addr, err)
+	}
+	p.conn = conn
+
+	if len(p.cfg.bindDn) > 0 {
+		if err = conn.Bind(p.cfg.bindDn, p.cfg.bindPw); err != nil {
+			log.Fatalf("LDAP: bind(%s): %s", p.cfg.bindDn, err)
+		}
+	}
 
 	w, err := ldapwatch.NewWatcher(p.conn, 1*time.Second, nil)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("LDAP: watcher: %s", err)
 	}
-	// defer w.Stop()
 
 	c := groupMembershipChecker{
 		c: updates,
@@ -50,9 +121,20 @@ func (p *LDAPProvider) Start() error {
 	// register the search
 	w.Add(p.sr, &c)
 
+	p.w = w
+
 	w.Start()
 
+	// defer func() { close(done) }()
+	go handleUpdates(p, updates, done)
+
 	return nil
+}
+
+// Stop ...
+func (p *LDAPProvider) Stop() {
+	p.w.Stop()
+	p.conn.Close()
 }
 
 type event struct {

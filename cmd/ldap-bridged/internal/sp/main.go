@@ -213,16 +213,55 @@ type scimProviderConfig struct {
 	dryRun  bool
 }
 
-// NewSCIMProvider ...
-func NewSCIMProvider(org, token string, dryRun bool) SCIMProvider {
-	baseURL := os.Getenv("SCIM_BASEURL")
-	if baseURL == "" {
-		baseURL = defaultBaseURL
+func parseConfig(cfg map[string]interface{}) scimProviderConfig {
+	c := scimProviderConfig{}
+
+	for k, v := range cfg {
+		switch k {
+		case "token":
+			if s, ok := v.(string); ok {
+				c.token = s
+			}
+		case "baseURL":
+			if s, ok := v.(string); ok {
+				c.baseURL = s
+			}
+		case "organization":
+			if s, ok := v.(string); ok {
+				c.org = s
+			}
+		case "dryRun":
+			if b, ok := v.(bool); ok {
+				c.dryRun = b
+			}
+		default:
+			log.Fatalf("SCIM: unrecognized config key: %s", k)
+		}
 	}
+
+	if c.baseURL == "" {
+		baseURL := os.Getenv("SCIM_BASEURL")
+		if baseURL == "" {
+			c.baseURL = defaultBaseURL
+		}
+	}
+
+	token := os.Getenv("SCIM_TOKEN")
+	if token != "" {
+		c.token = token
+	}
+
+	return c
+}
+
+// NewSCIMProvider ...
+// func NewSCIMProvider(org, token string, dryRun bool) SCIMProvider {
+func NewSCIMProvider(cfg map[string]interface{}) SCIMProvider {
+	c := parseConfig(cfg)
 
 	var client scimProvider
 
-	if dryRun {
+	if c.dryRun {
 		client = &fakeAPIClient{
 			store: make(map[string]scim.User),
 		}
@@ -230,9 +269,9 @@ func NewSCIMProvider(org, token string, dryRun bool) SCIMProvider {
 		// HTTP client
 		client = &apiClient{
 			client:  &http.Client{},
-			baseURL: baseURL,
-			token:   token,
-			org:     org,
+			baseURL: c.baseURL,
+			token:   c.token,
+			org:     c.org,
 			debug:   true,
 		}
 	}
